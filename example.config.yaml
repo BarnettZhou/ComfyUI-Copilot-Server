@@ -1,0 +1,18 @@
+comfyui:
+  root: ~/comfyui
+listen:
+  host: 0.0.0.0
+  port: 50051
+# true: 加载一类服务时释放另一类的模型，省内存；false: 两类模型共存
+exclusive_models: true
+# 文本编码（可选，与 upscalers 至少配置一段）
+encoders:
+  - id: qwen3vl4b.safetensors
+    clip_path: ~/models/qwen3vl4b.safetensors
+    clip_type: krea2
+# SeedVR2 放大（可选）；weight_dtype 对应 UNETLoader 选项：default/fp8_e4m3fn/fp8_e4m3fn_fast/fp8_e5m2
+# upscalers:
+#   - id: seedvr2_7b
+#     dit_path: ~/comfyui/models/diffusion_models/seedvr2_ema_7b.safetensors
+#     vae_path: ~/comfyui/models/vae/seedvr2_vae.safetensors
+#     weight_dtype: default
