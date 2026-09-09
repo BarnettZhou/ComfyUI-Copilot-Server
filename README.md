@@ -49,8 +49,20 @@ SeedVR2 放大：
 响应 body 为 `torch.save` 的 IMAGE tensor（float16）；出错时 HTTP 400 + JSON
 `{"ok": false, "error": ...}`。
 
+轻量放大（无需配置，body 同样是 `torch.save` 字节流，响应同样是 IMAGE tensor）：
+
+- `POST /v1/upscale_resize`：`{"image", "scale": 2.0, "method": "lanczos"}`，
+  method 可选 `nearest-exact / bilinear / area / bicubic / lanczos`
+- `POST /v1/upscale_model`：`{"image", "scale": 2.0, "method": "lanczos",
+  "model": "4x-UltraSharp.pth", "tile": 512, "overlap": 32}`；model 为
+  ComfyUI `models/upscale_models/` 下的文件名（spandrel 系模型），先用模型原生倍数
+  放大，再按 `method` 插值到 `scale` 倍目标尺寸；`tile <= 0` 表示不分块。
+- `/v1/ping` 响应中带 `upscale_models`（可用模型列表）和 `resize_methods`。
+
 ## 本地冒烟
 
 ```bash
-~/comfyui/venv/bin/python3 scripts/test_upscale.py 输入图.png 输出图.png --steps 4
+~/comfyui/venv/bin/python3 scripts/test_upscale.py in.png out.png --mode seedvr2 --steps 1
+~/comfyui/venv/bin/python3 scripts/test_upscale.py in.png out.png --mode resize --scale 2.0
+~/comfyui/venv/bin/python3 scripts/test_upscale.py in.png out.png --mode model --model 4x-UltraSharp.pth --scale 2.0
 ```

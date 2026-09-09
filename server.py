@@ -41,10 +41,13 @@ class Manager:
         import comfy.model_management, folder_paths, nodes, torch
         from text_encoder import Encoder
         from seedvr2 import Upscaler
+        from upscale import ImageUpscaler, METHODS
         self.torch, self.model_management = torch, comfy.model_management
         self.lock, self.exclusive = threading.RLock(), config["exclusive"]
         self.encoder = Encoder(config, torch, folder_paths, nodes, self.lock) if config["encoders"] else None
         self.upscaler = Upscaler(config, torch, folder_paths, nodes, self.lock) if config["upscalers"] else None
+        self.image_upscaler = ImageUpscaler(torch, folder_paths, nodes, comfy.model_management, self.lock)
+        self.resize_methods = METHODS
     def _release_other(self, loading):
         if not self.exclusive: return
         other = self.upscaler if loading == "encoder" else self.encoder
@@ -87,8 +90,14 @@ def main():
                 if self.path == "/v1/upscale_seedvr2":
                     body = manager.torch.load(io.BytesIO(raw), map_location="cpu", weights_only=True)
                     image = body.pop("image"); self.send_binary(manager.upscale(image, body)); return
+                if self.path == "/v1/upscale_resize":
+                    body = manager.torch.load(io.BytesIO(raw), map_location="cpu", weights_only=True)
+                    self.send_binary(manager.image_upscaler.resize(body.pop("image"), body.get("scale", 2.0), body.get("method", "lanczos"))); return
+                if self.path == "/v1/upscale_model":
+                    body = manager.torch.load(io.BytesIO(raw), map_location="cpu", weights_only=True)
+                    self.send_binary(manager.image_upscaler.model_upscale(body.pop("image"), body.get("scale", 2.0), body.get("method", "lanczos"), body["model"], body.get("tile", 512), body.get("overlap", 32))); return
                 body = json.loads(raw or b"{}")
-                if self.path == "/v1/ping": self.send_json({"ok": True, "encoder_ids": list(manager.encoder.encoders) if manager.encoder else [], "upscaler_ids": list(manager.upscaler.upscalers) if manager.upscaler else []}); return
+                if self.path == "/v1/ping": self.send_json({"ok": True, "encoder_ids": list(manager.encoder.encoders) if manager.encoder else [], "upscaler_ids": list(manager.upscaler.upscalers) if manager.upscaler else [], "upscale_models": manager.image_upscaler.list_models(), "resize_methods": manager.resize_methods}); return
                 if self.path == "/v1/load_clip": self.send_json({"ok": True, "loaded": manager.load_clip(body.get("encoder_id"), body.get("clip_type"))}); return
                 if self.path == "/v1/release":
                     manager.release_encoder()
