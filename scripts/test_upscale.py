@@ -8,7 +8,7 @@
     test_upscale.py in.png out.png --mode resize --scale 2.0 --method lanczos
     test_upscale.py in.png out.png --mode model --model 4x-UltraSharp.pth --scale 2.0 --tile 512 --overlap 32
 """
-import argparse, io, urllib.request
+import argparse, io, urllib.error, urllib.request
 from pathlib import Path
 import torch
 from PIL import Image
@@ -21,7 +21,8 @@ def main():
     parser.add_argument("--scale", type=float, default=2.0)
     parser.add_argument("--method", default="lanczos", choices=["nearest-exact", "bilinear", "area", "bicubic", "lanczos"])
     parser.add_argument("--model", default=None, help="upscale model 文件名，仅 --mode model")
-    parser.add_argument("--tile", type=int, default=512); parser.add_argument("--overlap", type=int, default=32)
+    parser.add_argument("--tile", type=int, default=512, help="分块大小，seedvr2/model 有效，<=0 表示整图不分块")
+    parser.add_argument("--overlap", type=int, default=32, help="分块重叠像素")
     parser.add_argument("--upscaler-id", default=None)
     parser.add_argument("--seed", type=int, default=42); parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--cfg", type=float, default=1.0); parser.add_argument("--sampler", default="euler")
@@ -36,7 +37,8 @@ def main():
         path = "/v1/upscale_seedvr2"
         payload.update({"upscaler_id": args.upscaler_id, "seed": args.seed, "steps": args.steps,
                         "cfg": args.cfg, "sampler_name": args.sampler, "scheduler": args.scheduler,
-                        "denoise": args.denoise, "color_fix": args.color_fix})
+                        "denoise": args.denoise, "color_fix": args.color_fix,
+                        "tile": args.tile, "overlap": args.overlap})
     elif args.mode == "resize":
         path = "/v1/upscale_resize"
         payload.update({"scale": args.scale, "method": args.method})
@@ -47,7 +49,12 @@ def main():
                         "tile": args.tile, "overlap": args.overlap})
     buf = io.BytesIO(); torch.save(payload, buf)
     request = urllib.request.Request(f"http://{args.server}{path}", data=buf.getvalue(), headers={"Content-Type": "application/octet-stream"})
-    with urllib.request.urlopen(request) as response:
+    try:
+        response = urllib.request.urlopen(request)
+    except urllib.error.HTTPError as exc:
+        body = __import__("json").loads(exc.read() or b"{}")
+        raise SystemExit(f"放大失败: {body.get('error', exc)} (oom={body.get('oom', False)})")
+    with response:
         result = torch.load(io.BytesIO(response.read()), map_location="cpu", weights_only=True)
     array = result[0].float().mul(255).round().clamp(0, 255).byte().numpy()
     Image.fromarray(array).save(args.output)

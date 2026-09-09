@@ -47,13 +47,25 @@ class Upscaler:
             color_fix = params.get("color_fix", "lab")
             if color_fix not in COLOR_FIX_METHODS: raise ValueError(f"未知 color_fix: {color_fix}")
             started = time.perf_counter()
-            print(f"[copilot] 开始 SeedVR2 放大: {tuple(image.shape)} steps={params['steps']} cfg={params['cfg']}", flush=True)
             image = image.to(self.torch.float32)
+            tile, overlap = int(params.get("tile", 0) or 0), int(params.get("overlap", 64))
+            if tile < overlap * 4: overlap = tile // 4
+            tiled = tile > 0
+            print(f"[copilot] 开始 SeedVR2 放大: {tuple(image.shape)} steps={params['steps']} cfg={params['cfg']} tile={tile or '整图'}", flush=True)
             pre = seedvr.SeedVR2Preprocess.execute(image).result[0]
-            latent = self.nodes.VAEEncode().encode(self.vae, pre)[0]
+            if tiled:
+                latent = {"samples": self.vae.encode_tiled(pre, tile_x=tile, tile_y=tile, overlap=overlap)}
+            else:
+                latent = self.nodes.VAEEncode().encode(self.vae, pre)[0]
             positive, negative = seedvr.SeedVR2Conditioning.execute(self.model, latent).result
             out = self.nodes.common_ksampler(self.model, params["seed"], params["steps"], params["cfg"], params["sampler_name"], params["scheduler"], positive, negative, latent, denoise=params.get("denoise", 1.0))[0]
-            decoded = self.nodes.VAEDecode().decode(self.vae, out)[0]
+            if tiled:
+                compression = self.vae.spacial_compression_decode()
+                decoded = self.vae.decode_tiled(out["samples"], tile_x=tile // compression, tile_y=tile // compression, overlap=overlap // compression)
+                if len(decoded.shape) == 5:
+                    decoded = decoded.reshape(-1, decoded.shape[-3], decoded.shape[-2], decoded.shape[-1])
+            else:
+                decoded = self.nodes.VAEDecode().decode(self.vae, out)[0]
             result = seedvr.SeedVR2PostProcessing.execute(decoded, image, color_fix).result[0]
             print(f"[copilot] SeedVR2 放大完成: {tuple(result.shape)} ({time.perf_counter() - started:.2f}s)", flush=True)
             return result

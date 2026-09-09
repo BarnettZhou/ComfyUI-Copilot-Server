@@ -43,11 +43,14 @@ SeedVR2 放大：
   "sampler_name": str, "scheduler": str,
   "denoise": float,              # 通常 1.0
   "color_fix": "lab" | "wavelet" | "adain" | "none",
+  "tile": int,                   # VAE 分块大小（像素），<=0 或缺省表示整图不分块
+  "overlap": int,                # 分块重叠像素，默认 64
 }
 ```
 
 响应 body 为 `torch.save` 的 IMAGE tensor（float16）；出错时 HTTP 400 + JSON
-`{"ok": false, "error": ...}`。
+`{"ok": false, "error": ...}`，显存不足（OOM）时额外带 `"oom": true`，
+调用方可据此改用更小的 `tile` 重试。
 
 轻量放大（无需配置，body 同样是 `torch.save` 字节流，响应同样是 IMAGE tensor）：
 

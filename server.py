@@ -114,7 +114,11 @@ def main():
                     image = unpack(body["image"], manager.torch); image_b = unpack(body["image_b"], manager.torch) if body.get("image_b") else None; p, n = manager.encoder.grounded(body["prompt"], body.get("negative_prompt", ""), image, image_b, body.get("grounding_px", 768), body.get("cfg", 1), body.get("reuse_negative_at_cfg_one", False)); self.send_json({"ok": True, "positive": pack(p, manager.torch), "negative": pack(n, manager.torch)}); return
                 raise ValueError("未知请求路径")
             except Exception as exc:
+                oom = manager.model_management.is_oom(exc)
+                if oom: manager.model_management.soft_empty_cache()
                 print(f"[copilot] 请求失败: {type(exc).__name__}: {exc}", flush=True)
-                self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
+                payload = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                if oom: payload["oom"] = True
+                self.send_json(payload, 400)
     print(f"copilot listening on {config['host']}:{config['port']}", flush=True); ThreadingHTTPServer((config["host"], config["port"]), Handler).serve_forever()
 if __name__ == "__main__": main()
