@@ -61,6 +61,7 @@
     <label data-mode="seedvr2"><span>颜色修复</span><select id="color_fix"></select></label>
     <label data-mode="seedvr2 model"><span>tile（0 = 整图不分块）</span><input id="tile" type="number" min="0" step="64" value="512"></label>
     <label data-mode="seedvr2 model"><span>overlap</span><input id="overlap" type="number" min="0" step="8" value="32"></label>
+    <label data-mode="seedvr2 resize model"><span>锐化强度（0 关闭）</span><input id="sharpen" type="number" min="0" max="1" step="0.05" value="0"></label>
   </section>
   <section id="result-panel">
     <button id="submit">提交任务</button>
@@ -112,7 +113,7 @@ $("file").addEventListener("change", e => {
   reader.readAsDataURL(f);
 });
 
-const PARAM_FIELDS = ["upscaler_id", "model", "scale", "method", "steps", "denoise", "cfg", "seed", "sampler_name", "scheduler", "color_fix", "tile", "overlap"];
+const PARAM_FIELDS = ["upscaler_id", "model", "scale", "method", "steps", "denoise", "cfg", "seed", "sampler_name", "scheduler", "color_fix", "tile", "overlap", "sharpen"];
 
 $("submit").addEventListener("click", async () => {
   if (!imageData) { alert("请先选择图片"); return; }

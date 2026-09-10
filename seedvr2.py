@@ -67,5 +67,10 @@ class Upscaler:
             else:
                 decoded = self.nodes.VAEDecode().decode(self.vae, out)[0]
             result = seedvr.SeedVR2PostProcessing.execute(decoded, image, color_fix).result[0]
+            sharpen = float(params.get("sharpen", 0.0) or 0.0)
+            if sharpen > 0:
+                from sharpen import sharpen_images
+                result = sharpen_images(self.torch, result, sharpen)
+                print(f"[copilot] USM 锐化: strength={sharpen}", flush=True)
             print(f"[copilot] SeedVR2 放大完成: {tuple(result.shape)} ({time.perf_counter() - started:.2f}s)", flush=True)
             return result

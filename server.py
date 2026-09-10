@@ -111,10 +111,10 @@ def main():
                     image = body.pop("image"); self.send_binary(manager.upscale(image, body)); return
                 if self.path == "/v1/upscale_resize":
                     body = manager.torch.load(io.BytesIO(raw), map_location="cpu", weights_only=True)
-                    self.send_binary(manager.image_upscaler.resize(body.pop("image"), body.get("scale", 2.0), body.get("method", "lanczos"))); return
+                    self.send_binary(manager.image_upscaler.resize(body.pop("image"), body.get("scale", 2.0), body.get("method", "lanczos"), body.get("sharpen", 0.0))); return
                 if self.path == "/v1/upscale_model":
                     body = manager.torch.load(io.BytesIO(raw), map_location="cpu", weights_only=True)
-                    self.send_binary(manager.image_upscaler.model_upscale(body.pop("image"), body.get("scale", 2.0), body.get("method", "lanczos"), body["model"], body.get("tile", 512), body.get("overlap", 32))); return
+                    self.send_binary(manager.image_upscaler.model_upscale(body.pop("image"), body.get("scale", 2.0), body.get("method", "lanczos"), body["model"], body.get("tile", 512), body.get("overlap", 32), body.get("sharpen", 0.0))); return
                 body = json.loads(raw or b"{}")
                 if self.path == "/api/jobs": self.send_json(webui.submit(body)); return
                 if self.path == "/v1/ping": self.send_json({"ok": True, "encoder_ids": list(manager.encoder.encoders) if manager.encoder else [], "upscaler_ids": list(manager.upscaler.upscalers) if manager.upscaler else [], "upscale_models": manager.image_upscaler.list_models(), "resize_methods": manager.resize_methods}); return

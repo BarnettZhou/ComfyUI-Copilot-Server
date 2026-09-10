@@ -88,11 +88,12 @@ class WebUI:
                 "cfg": float(p.get("cfg", 1.0)), "sampler_name": p.get("sampler_name", "euler"),
                 "scheduler": p.get("scheduler", "simple"), "denoise": float(p.get("denoise", 1.0)),
                 "color_fix": p.get("color_fix", "lab"),
+                "sharpen": float(p.get("sharpen", 0.0) or 0.0),
                 "tile": int(p.get("tile", 0) or 0), "overlap": int(p.get("overlap", 64))})
         if job["mode"] == "resize":
-            return self.manager.image_upscaler.resize(tensor, float(p.get("scale", 2.0)), p.get("method", "lanczos"))
+            return self.manager.image_upscaler.resize(tensor, float(p.get("scale", 2.0)), p.get("method", "lanczos"), float(p.get("sharpen", 0.0) or 0.0))
         return self.manager.image_upscaler.model_upscale(tensor, float(p.get("scale", 2.0)),
-                p.get("method", "lanczos"), p["model"], int(p.get("tile", 512)), int(p.get("overlap", 32)))
+                p.get("method", "lanczos"), p["model"], int(p.get("tile", 512)), int(p.get("overlap", 32)), float(p.get("sharpen", 0.0) or 0.0))
 
     def _save_png(self, tensor, path):
         from PIL import Image

@@ -12,12 +12,19 @@ class ImageUpscaler:
         return self.folder_paths.get_filename_list("upscale_models")
     def _check_method(self, method):
         if method not in METHODS: raise ValueError(f"未知插值方式: {method}，可选: {', '.join(METHODS)}")
-    def resize(self, image, scale, method):
+    def resize(self, image, scale, method, sharpen=0.0):
         self._check_method(method)
         started = time.perf_counter()
         result = self.nodes.ImageScaleBy().upscale(image.to(self.torch.float32), method, float(scale))[0]
+        result = self._sharpen(result, sharpen)
         print(f"[copilot] resize 放大: {tuple(image.shape)} x{scale} {method} -> {tuple(result.shape)} ({time.perf_counter() - started:.2f}s)", flush=True)
         return result
+    def _sharpen(self, image, sharpen):
+        sharpen = float(sharpen or 0.0)
+        if sharpen <= 0: return image
+        from sharpen import sharpen_images
+        print(f"[copilot] USM 锐化: strength={sharpen}", flush=True)
+        return sharpen_images(self.torch, image, sharpen)
     def _load_model(self, model_name):
         if self.model is not None and self.model_name == model_name:
             print(f"[copilot] 复用 upscale model: {model_name}", flush=True)
@@ -29,7 +36,7 @@ class ImageUpscaler:
         self.model_name = model_name
         print(f"[copilot] upscale model 就绪: {model_name} scale={self.model.scale}x ({time.perf_counter() - started:.2f}s)", flush=True)
         return self.model
-    def model_upscale(self, image, scale, method, model_name, tile, overlap):
+    def model_upscale(self, image, scale, method, model_name, tile, overlap, sharpen=0.0):
         self._check_method(method)
         import comfy.utils
         with self.lock, self.torch.inference_mode():
@@ -53,5 +60,6 @@ class ImageUpscaler:
             target_w, target_h = round(image.shape[2] * float(scale)), round(image.shape[1] * float(scale))
             if (result.shape[2], result.shape[1]) != (target_w, target_h):
                 result = comfy.utils.common_upscale(result.movedim(-1, 1), target_w, target_h, method, "disabled").movedim(1, -1)
+            result = self._sharpen(result, sharpen)
             print(f"[copilot] upscale model 放大: {model_name} tile={tile} overlap={overlap} -> {tuple(result.shape)} ({time.perf_counter() - started:.2f}s)", flush=True)
             return result

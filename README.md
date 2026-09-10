@@ -45,6 +45,7 @@ SeedVR2 放大：
   "color_fix": "lab" | "wavelet" | "adain" | "none",
   "tile": int,                   # VAE 分块大小（像素），<=0 或缺省表示整图不分块
   "overlap": int,                # 分块重叠像素，默认 64
+  "sharpen": float,              # 可选 USM 锐化强度 0-1（0 关闭，颜色修复后应用）
 }
 ```
 
@@ -54,10 +55,11 @@ SeedVR2 放大：
 
 轻量放大（无需配置，body 同样是 `torch.save` 字节流，响应同样是 IMAGE tensor）：
 
-- `POST /v1/upscale_resize`：`{"image", "scale": 2.0, "method": "lanczos"}`，
-  method 可选 `nearest-exact / bilinear / area / bicubic / lanczos`
+- `POST /v1/upscale_resize`：`{"image", "scale": 2.0, "method": "lanczos",
+  "sharpen": 0.0}`，method 可选 `nearest-exact / bilinear / area / bicubic / lanczos`；
+  `sharpen` 为可选 USM 锐化强度（0 关闭）
 - `POST /v1/upscale_model`：`{"image", "scale": 2.0, "method": "lanczos",
-  "model": "4x-UltraSharp.pth", "tile": 512, "overlap": 32}`；model 为
+  "model": "4x-UltraSharp.pth", "tile": 512, "overlap": 32, "sharpen": 0.0}`；model 为
   ComfyUI `models/upscale_models/` 下的文件名（spandrel 系模型），先用模型原生倍数
   放大，再按 `method` 插值到 `scale` 倍目标尺寸；`tile <= 0` 表示不分块。
 - `/v1/ping` 响应中带 `upscale_models`（可用模型列表）和 `resize_methods`。
