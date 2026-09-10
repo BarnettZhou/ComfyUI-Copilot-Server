@@ -4,5 +4,6 @@ __pycache__/
 venv/
 .env
 config.yaml
+.cache/
 *.log
 .DS_Store

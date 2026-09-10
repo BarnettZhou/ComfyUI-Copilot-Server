@@ -38,11 +38,12 @@ class Manager:
         root = Path(config["comfy_root"]); sys.path.insert(0, str(root))
         import comfy.options; comfy.options.args_parsing = False
         import comfy.cli_args; comfy.cli_args.args.disable_xformers = True; comfy.cli_args.args.use_pytorch_cross_attention = True
-        import comfy.model_management, folder_paths, nodes, torch
+        import comfy.model_management, comfy.samplers, folder_paths, nodes, torch
         from text_encoder import Encoder
         from seedvr2 import Upscaler
         from upscale import ImageUpscaler, METHODS
         self.torch, self.model_management = torch, comfy.model_management
+        self.samplers, self.schedulers = comfy.samplers.KSampler.SAMPLERS, comfy.samplers.KSampler.SCHEDULERS
         self.lock, self.exclusive = threading.RLock(), config["exclusive"]
         self.encoder = Encoder(config, torch, folder_paths, nodes, self.lock) if config["encoders"] else None
         self.upscaler = Upscaler(config, torch, folder_paths, nodes, self.lock) if config["upscalers"] else None
@@ -77,10 +78,28 @@ class Manager:
 
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--config", default="config.yaml"); args = parser.parse_args(); config = load_config(args.config); manager = Manager(config)
+    from webui import WebUI
+    webui = WebUI(manager, Path(__file__).parent)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_): pass
         def send_json(self, payload, status=200):
             data = json.dumps(payload, ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        def send_bytes(self, data, content_type):
+            self.send_response(200); self.send_header("Content-Type", content_type); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        def do_GET(self):
+            try:
+                path = self.path.split("?", 1)[0]
+                if path in ("/", "/index.html"): self.send_bytes(webui.page(), "text/html; charset=utf-8"); return
+                if path == "/api/options": self.send_json({"ok": True, **webui.options()}); return
+                if path == "/api/jobs": self.send_json(webui.list_jobs()); return
+                if path.startswith("/cache/"):
+                    cached = webui.cache_file(path.split("/cache/", 1)[1])
+                    if cached is None: self.send_json({"ok": False, "error": "not found"}, 404); return
+                    self.send_bytes(cached.read_bytes(), "image/png"); return
+                self.send_json({"ok": False, "error": "未知请求路径"}, 404)
+            except Exception as exc:
+                print(f"[copilot] 请求失败: {type(exc).__name__}: {exc}", flush=True)
+                self.send_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 400)
         def send_binary(self, payload):
             out = io.BytesIO(); manager.torch.save(payload.to(manager.torch.float16), out); data = out.getvalue()
             self.send_response(200); self.send_header("Content-Type", "application/octet-stream"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
@@ -97,6 +116,7 @@ def main():
                     body = manager.torch.load(io.BytesIO(raw), map_location="cpu", weights_only=True)
                     self.send_binary(manager.image_upscaler.model_upscale(body.pop("image"), body.get("scale", 2.0), body.get("method", "lanczos"), body["model"], body.get("tile", 512), body.get("overlap", 32))); return
                 body = json.loads(raw or b"{}")
+                if self.path == "/api/jobs": self.send_json(webui.submit(body)); return
                 if self.path == "/v1/ping": self.send_json({"ok": True, "encoder_ids": list(manager.encoder.encoders) if manager.encoder else [], "upscaler_ids": list(manager.upscaler.upscalers) if manager.upscaler else [], "upscale_models": manager.image_upscaler.list_models(), "resize_methods": manager.resize_methods}); return
                 if self.path == "/v1/load_clip": self.send_json({"ok": True, "loaded": manager.load_clip(body.get("encoder_id"), body.get("clip_type"))}); return
                 if self.path == "/v1/release":

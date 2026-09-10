@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图像放大测试</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; background: #141517; color: #e4e4e7; }
+  main { display: flex; min-height: 100vh; }
+  #form-panel { width: 340px; flex-shrink: 0; padding: 20px; border-right: 1px solid #2a2b2e; overflow-y: auto; }
+  #form-panel h2, #result-panel h2 { margin: 0 0 16px; font-size: 16px; }
+  label { display: block; margin-bottom: 12px; font-size: 13px; color: #a1a1aa; }
+  label > span { display: block; margin-bottom: 4px; }
+  input, select { width: 100%; padding: 6px 8px; border: 1px solid #3f3f46; border-radius: 6px; background: #1e1f22; color: #e4e4e7; font-size: 13px; }
+  input[type=file] { padding: 4px; }
+  #preview img { max-width: 100%; border-radius: 6px; margin-top: 8px; }
+  #result-panel { flex: 1; padding: 20px; overflow-y: auto; }
+  #submit { padding: 10px 28px; border: none; border-radius: 8px; background: #4f46e5; color: #fff; font-size: 14px; cursor: pointer; }
+  #submit:hover { background: #4338ca; }
+  #submit:disabled { background: #3f3f46; cursor: not-allowed; }
+  #jobs { margin-top: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .job { border: 1px solid #2a2b2e; border-radius: 8px; padding: 12px; background: #1b1c1f; }
+  .job-head { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-wrap: wrap; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .pending { background: #713f12; color: #fde68a; }
+  .running { background: #1e3a8a; color: #bfdbfe; }
+  .done { background: #14532d; color: #bbf7d0; }
+  .error { background: #7f1d1d; color: #fecaca; }
+  .params { margin-top: 6px; font-size: 12px; color: #71717a; word-break: break-all; }
+  .err { margin-top: 6px; font-size: 12px; color: #f87171; }
+  .job img { margin-top: 10px; max-width: 480px; max-height: 480px; border-radius: 6px; display: block; }
+  .job a.dl { font-size: 12px; color: #818cf8; display: inline-block; margin-top: 6px; }
+  .hidden { display: none; }
+  #empty { color: #52525b; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <section id="form-panel">
+    <h2>参数</h2>
+    <label><span>图片</span><input type="file" id="file" accept="image/*"></label>
+    <div id="preview"></div>
+    <label><span>模式</span>
+      <select id="mode">
+        <option value="seedvr2">SeedVR2 扩散放大</option>
+        <option value="resize">纯插值 resize</option>
+        <option value="model">放大模型</option>
+      </select>
+    </label>
+    <label data-mode="seedvr2"><span>SeedVR2 模型</span><select id="upscaler_id"></select></label>
+    <label data-mode="model"><span>放大模型</span><select id="model"></select></label>
+    <label data-mode="resize model"><span>放大倍数</span><input id="scale" type="number" step="0.1" min="0.1" value="2.0"></label>
+    <label data-mode="resize model"><span>插值算法</span><select id="method"></select></label>
+    <label data-mode="seedvr2"><span>迭代步数</span><input id="steps" type="number" min="1" value="1"></label>
+    <label data-mode="seedvr2"><span>denoise</span><input id="denoise" type="number" step="0.05" min="0" max="1" value="1.0"></label>
+    <label data-mode="seedvr2"><span>cfg</span><input id="cfg" type="number" step="0.1" min="0" value="1.0"></label>
+    <label data-mode="seedvr2"><span>seed</span><input id="seed" type="number" value="42"></label>
+    <label data-mode="seedvr2"><span>sampler</span><select id="sampler_name"></select></label>
+    <label data-mode="seedvr2"><span>scheduler</span><select id="scheduler"></select></label>
+    <label data-mode="seedvr2"><span>颜色修复</span><select id="color_fix"></select></label>
+    <label data-mode="seedvr2 model"><span>tile（0 = 整图不分块）</span><input id="tile" type="number" min="0" step="64" value="512"></label>
+    <label data-mode="seedvr2 model"><span>overlap</span><input id="overlap" type="number" min="0" step="8" value="32"></label>
+  </section>
+  <section id="result-panel">
+    <button id="submit">提交任务</button>
+    <div id="jobs"><p id="empty">还没有任务</p></div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let imageData = null, imageName = "image";
+
+function fill(select, items, preferred) {
+  select.innerHTML = "";
+  for (const it of items) {
+    const o = document.createElement("option");
+    o.value = o.textContent = it;
+    select.appendChild(o);
+  }
+  if (preferred && items.includes(preferred)) select.value = preferred;
+}
+
+async function loadOptions() {
+  const res = await fetch("/api/options");
+  const data = await res.json();
+  fill($("upscaler_id"), data.upscaler_ids);
+  fill($("model"), data.upscale_models);
+  fill($("method"), data.resize_methods, "lanczos");
+  fill($("sampler_name"), data.samplers, "euler");
+  fill($("scheduler"), data.schedulers, "simple");
+  fill($("color_fix"), data.color_fix, "lab");
+}
+
+function toggleFields() {
+  const mode = $("mode").value;
+  document.querySelectorAll("[data-mode]").forEach(el => {
+    el.classList.toggle("hidden", !el.dataset.mode.split(" ").includes(mode));
+  });
+}
+
+$("mode").addEventListener("change", toggleFields);
+$("file").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) { imageData = null; $("preview").innerHTML = ""; return; }
+  imageName = f.name;
+  const reader = new FileReader();
+  reader.onload = () => {
+    imageData = reader.result;
+    $("preview").innerHTML = `<img src="${imageData}">`;
+  };
+  reader.readAsDataURL(f);
+});
+
+const PARAM_FIELDS = ["upscaler_id", "model", "scale", "method", "steps", "denoise", "cfg", "seed", "sampler_name", "scheduler", "color_fix", "tile", "overlap"];
+
+$("submit").addEventListener("click", async () => {
+  if (!imageData) { alert("请先选择图片"); return; }
+  const mode = $("mode").value;
+  const params = {};
+  document.querySelectorAll("[data-mode]").forEach(el => {
+    if (el.classList.contains("hidden")) return;
+    const input = el.querySelector("input, select");
+    if (input && input.id) params[input.id] = input.value;
+  });
+  $("submit").disabled = true;
+  try {
+    const res = await fetch("/api/jobs", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, name: imageName, image: imageData, params })
+    });
+    const data = await res.json();
+    if (!data.ok) alert("提交失败: " + data.error);
+    poll();
+  } finally {
+    $("submit").disabled = false;
+  }
+});
+
+const STATUS_TEXT = { pending: "排队中", running: "运行中", done: "完成", error: "失败" };
+
+function renderJobs(jobs) {
+  const box = $("jobs");
+  if (!jobs.length) { box.innerHTML = '<p id="empty">还没有任务</p>'; return; }
+  box.innerHTML = "";
+  for (const j of jobs) {
+    const div = document.createElement("div");
+    div.className = "job";
+    let status = STATUS_TEXT[j.status] || j.status;
+    if (j.status === "pending") status += ` #${j.position}`;
+    if (j.elapsed != null) status += ` ${j.elapsed.toFixed(1)}s`;
+    const shown = Object.entries(j.params).filter(([k, v]) => v !== "" && v != null).map(([k, v]) => `${k}=${v}`).join(" ");
+    let html = `<div class="job-head"><span class="badge ${j.status}">${status}</span><b>${j.mode}</b><span style="color:#71717a">${j.name}</span></div>`;
+    html += `<div class="params">${shown}</div>`;
+    if (j.status === "error") html += `<div class="err">${j.error || ""}${j.oom ? " (OOM)" : ""}</div>`;
+    if (j.status === "done" && j.result) {
+      html += `<a href="/cache/${j.result}" target="_blank"><img src="/cache/${j.result}" loading="lazy"></a>`;
+      html += `<a class="dl" href="/cache/${j.result}" download>下载 PNG</a>`;
+    }
+    div.innerHTML = html;
+    box.appendChild(div);
+  }
+}
+
+let polling = false;
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try {
+    const res = await fetch("/api/jobs");
+    const data = await res.json();
+    if (data.ok) renderJobs(data.jobs);
+  } catch (e) { /* 忽略瞬时网络错误 */ }
+  polling = false;
+}
+
+loadOptions().then(toggleFields);
+toggleFields();
+setInterval(poll, 1500);
+poll();
+</script>
+</body>
+</html>
