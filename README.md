@@ -46,6 +46,9 @@ SeedVR2 放大：
   "tile": int,                   # VAE 分块大小（像素），<=0 或缺省表示整图不分块
   "overlap": int,                # 分块重叠像素，默认 64
   "sharpen": float,              # 可选 USM 锐化强度 0-1（0 关闭，颜色修复后应用）
+  "scale": float,                # 可选放大倍数（>0 时先按 method 把输入插值到 scale 倍，再在该分辨率上扩散增强）
+  "method": str,                 # 配合 scale 使用，同 resize 的插值算法，默认 lanczos
+                                 # 注意：扩散在放大后的分辨率上运行，显存/内存开销随像素数平方增长
 }
 ```
 

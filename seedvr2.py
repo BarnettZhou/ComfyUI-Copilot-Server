@@ -48,6 +48,15 @@ class Upscaler:
             if color_fix not in COLOR_FIX_METHODS: raise ValueError(f"未知 color_fix: {color_fix}")
             started = time.perf_counter()
             image = image.to(self.torch.float32)
+            scale = float(params.get("scale", 0.0) or 0.0)
+            if scale > 0:
+                from upscale import METHODS
+                method = params.get("method", "lanczos")
+                if method not in METHODS: raise ValueError(f"未知插值方式: {method}，可选: {', '.join(METHODS)}")
+                import comfy.utils
+                target_w, target_h = round(image.shape[2] * scale), round(image.shape[1] * scale)
+                image = comfy.utils.common_upscale(image.movedim(-1, 1), target_w, target_h, method, "disabled").movedim(1, -1)
+                print(f"[copilot] SeedVR2 预放大输入: x{scale} -> {tuple(image.shape)}", flush=True)
             tile, overlap = int(params.get("tile", 0) or 0), int(params.get("overlap", 64))
             if tile < overlap * 4: overlap = tile // 4
             tiled = tile > 0

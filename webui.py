@@ -1,9 +1,10 @@
 """浏览器端图像放大测试页：表单提交 → 单 worker 队列串行执行 → 结果存 .cache/。"""
-import base64, io, queue, re, threading, time, uuid
+import base64, io, queue, random, re, threading, time, uuid
 from pathlib import Path
 
 MODES = ("seedvr2", "resize", "model")
 COLOR_FIX = ("lab", "wavelet", "adain", "none")
+MAX_DIFFUSION_PIXELS = 4_000_000  # SeedVR2 扩散分辨率（宽×高）上限，超出会被整机 swap 拖死，请降低放大倍数或输入尺寸
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 
 class WebUI:
@@ -35,6 +36,13 @@ class WebUI:
         raw = base64.b64decode(data)
         params = body.get("params") or {}
         if mode == "model" and not params.get("model"): raise ValueError("model 模式需要选择放大模型")
+        if mode == "seedvr2":
+            from PIL import Image
+            w, h = Image.open(io.BytesIO(raw)).size
+            scale = float(params.get("scale", 0.0) or 0.0)
+            factor = scale if scale > 0 else 1.0
+            if (w * factor) * (h * factor) > MAX_DIFFUSION_PIXELS:
+                raise ValueError(f"扩散分辨率 {round(w * factor)}x{round(h * factor)} 超过上限 {MAX_DIFFUSION_PIXELS // 10000} 万像素，请降低放大倍数或输入尺寸")
         job = {"id": uuid.uuid4().hex[:12], "mode": mode, "params": params, "name": str(body.get("name") or "image"),
                "status": "pending", "created": time.time(), "started": None, "elapsed": None,
                "result": None, "error": None, "oom": False, "raw": raw}
@@ -82,13 +90,18 @@ class WebUI:
         tensor = self.manager.torch.from_numpy(np.array(image)).float().div(255).unsqueeze(0)
         p = job["params"]
         if job["mode"] == "seedvr2":
+            seed = int(p.get("seed", -1) or 0)
+            if seed < 0:
+                seed = random.SystemRandom().randint(0, 2**63 - 1)
+                job["params"]["seed"] = str(seed)
             return self.manager.upscale(tensor, {
                 "upscaler_id": p.get("upscaler_id") or None,
-                "seed": int(p.get("seed", 42)), "steps": max(1, int(p.get("steps", 1))),
+                "seed": seed, "steps": max(1, int(p.get("steps", 1))),
                 "cfg": float(p.get("cfg", 1.0)), "sampler_name": p.get("sampler_name", "euler"),
                 "scheduler": p.get("scheduler", "simple"), "denoise": float(p.get("denoise", 1.0)),
                 "color_fix": p.get("color_fix", "lab"),
                 "sharpen": float(p.get("sharpen", 0.0) or 0.0),
+                "scale": float(p.get("scale", 0.0) or 0.0), "method": p.get("method", "lanczos"),
                 "tile": int(p.get("tile", 0) or 0), "overlap": int(p.get("overlap", 64))})
         if job["mode"] == "resize":
             return self.manager.image_upscaler.resize(tensor, float(p.get("scale", 2.0)), p.get("method", "lanczos"), float(p.get("sharpen", 0.0) or 0.0))

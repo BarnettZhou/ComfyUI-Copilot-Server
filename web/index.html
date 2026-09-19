@@ -14,6 +14,9 @@
   label > span { display: block; margin-bottom: 4px; }
   input, select { width: 100%; padding: 6px 8px; border: 1px solid #3f3f46; border-radius: 6px; background: #1e1f22; color: #e4e4e7; font-size: 13px; }
   input[type=file] { padding: 4px; }
+  #dropzone { border: 1px dashed #3f3f46; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+  #dropzone.over { border-color: #6366f1; background: #1e1f22; }
+  #dropzone label { margin-bottom: 0; }
   #preview img { max-width: 100%; border-radius: 6px; margin-top: 8px; }
   #result-panel { flex: 1; padding: 20px; overflow-y: auto; }
   #submit { padding: 10px 28px; border: none; border-radius: 8px; background: #4f46e5; color: #fff; font-size: 14px; cursor: pointer; }
@@ -39,8 +42,10 @@
 <main>
   <section id="form-panel">
     <h2>参数</h2>
-    <label><span>图片</span><input type="file" id="file" accept="image/*"></label>
-    <div id="preview"></div>
+    <div id="dropzone">
+      <label><span>图片（可直接拖入文件）</span><input type="file" id="file" accept="image/*"></label>
+      <div id="preview"></div>
+    </div>
     <label><span>模式</span>
       <select id="mode">
         <option value="seedvr2">SeedVR2 扩散放大</option>
@@ -50,12 +55,12 @@
     </label>
     <label data-mode="seedvr2"><span>SeedVR2 模型</span><select id="upscaler_id"></select></label>
     <label data-mode="model"><span>放大模型</span><select id="model"></select></label>
-    <label data-mode="resize model"><span>放大倍数</span><input id="scale" type="number" step="0.1" min="0.1" value="2.0"></label>
-    <label data-mode="resize model"><span>插值算法</span><select id="method"></select></label>
+    <label data-mode="seedvr2 resize model"><span>放大倍数</span><input id="scale" type="number" step="0.1" min="0.1" value="2.0"></label>
+    <label data-mode="seedvr2 resize model"><span>插值算法</span><select id="method"></select></label>
     <label data-mode="seedvr2"><span>迭代步数</span><input id="steps" type="number" min="1" value="1"></label>
     <label data-mode="seedvr2"><span>denoise</span><input id="denoise" type="number" step="0.05" min="0" max="1" value="1.0"></label>
     <label data-mode="seedvr2"><span>cfg</span><input id="cfg" type="number" step="0.1" min="0" value="1.0"></label>
-    <label data-mode="seedvr2"><span>seed</span><input id="seed" type="number" value="42"></label>
+    <label data-mode="seedvr2"><span>seed（-1 = 随机）</span><input id="seed" type="number" value="-1"></label>
     <label data-mode="seedvr2"><span>sampler</span><select id="sampler_name"></select></label>
     <label data-mode="seedvr2"><span>scheduler</span><select id="scheduler"></select></label>
     <label data-mode="seedvr2"><span>颜色修复</span><select id="color_fix"></select></label>
@@ -101,9 +106,9 @@ function toggleFields() {
 }
 
 $("mode").addEventListener("change", toggleFields);
-$("file").addEventListener("change", e => {
-  const f = e.target.files[0];
-  if (!f) { imageData = null; $("preview").innerHTML = ""; return; }
+
+function setImage(f) {
+  if (!f || !f.type.startsWith("image/")) return;
   imageName = f.name;
   const reader = new FileReader();
   reader.onload = () => {
@@ -111,9 +116,17 @@ $("file").addEventListener("change", e => {
     $("preview").innerHTML = `<img src="${imageData}">`;
   };
   reader.readAsDataURL(f);
-});
+}
 
-const PARAM_FIELDS = ["upscaler_id", "model", "scale", "method", "steps", "denoise", "cfg", "seed", "sampler_name", "scheduler", "color_fix", "tile", "overlap", "sharpen"];
+$("file").addEventListener("change", e => setImage(e.target.files[0]));
+const dz = $("dropzone");
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+dz.addEventListener("drop", e => {
+  e.preventDefault();
+  dz.classList.remove("over");
+  setImage(e.dataTransfer.files[0]);
+});
 
 $("submit").addEventListener("click", async () => {
   if (!imageData) { alert("请先选择图片"); return; }
